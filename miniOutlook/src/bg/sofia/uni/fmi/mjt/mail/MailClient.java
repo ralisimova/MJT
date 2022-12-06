@@ -37,16 +37,22 @@ public interface MailClient {
 
     /**
      * Creates a new Rule for the current mail client.
-     * The following definition is the valid format for rules:
+     * A Rule is defined via a string called Rule Definition. Each Rule Definition contains one or more Rule Conditions.
+     *
+     * The following Rule Definition is the valid format for rules:
      * subject-includes: <list-of-keywords>
      * subject-or-body-includes: <list-of-keywords>
      * recipients-includes: <list-of-recipient-emails>
      * from: <sender-email>
-     * <p>
+     *
      * The order is not determined, and the list might not be full. Example:
      * subject-includes: mjt, izpit, 2022
      * subject-or-body-includes: izpit
      * from: stoyo@fmi.bg
+     *
+     * For subject-includes and subject-or-body-includes rule conditions, if more than one keywords is specified, all must
+     * be contained for the rule to match, i.e. it is a conjunction condition. For recipients-includes,
+     * it's enough for one listed recipient to match (disjunction condition). For from, it should be exact match.
      *
      * @param accountName    name of the account for which the rule is applied
      * @param folderPath     full path of the destination folder
@@ -56,7 +62,8 @@ public interface MailClient {
      *                                     or the priority of the rule is not within the expected range
      * @throws AccountNotFoundException    if the account does not exist
      * @throws FolderNotFoundException     if the folder does not exist
-     * @throws RuleAlreadyDefinedException if the rule definition contains a rule/condition that already exists
+     * @throws RuleAlreadyDefinedException if the rule definition contains a rule *condition* that already exists,
+     * e.g. a rule definition contains `subject-includes` twice, or any other condition more than once.
      */
     void addRule(String accountName, String folderPath, String ruleDefinition, int priority);
 
@@ -67,7 +74,7 @@ public interface MailClient {
      * subject: <subject>
      * recipients: <list-of-emails>
      * received: <LocalDateTime> - in format yyyy-MM-dd HH:mm
-     * <p>
+     *
      * The order is not determined and the list might not be full. Example:
      * sender: testy@gmail.com
      * subject: Hello, MJT!
@@ -79,12 +86,11 @@ public interface MailClient {
      * @param mailContent  content of the mail
      * @throws IllegalArgumentException if any of the parameters is null, empty or blank
      * @throws AccountNotFoundException if the account does not exist
-     * @throws FolderNotFoundException  if the folder does not exist
      */
     void receiveMail(String accountName, String mailMetadata, String mailContent);
 
     /**
-     * Returns a collection of all mails in the provided folder
+     * Returns a collection of all mails contained directly in the provided folder.
      *
      * @param account    name of the selected account
      * @param folderPath full path of the folder

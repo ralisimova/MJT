@@ -2,35 +2,52 @@ package bg.sofia.uni.fmi.mjt.mail;
 
 import bg.sofia.uni.fmi.mjt.mail.exceptions.*;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class Outlook implements MailClient {
     private static final int MAX_PRIORITY = 10;
     // private List<Account> accounts;
-    private Map<Account, List<EmailFolder>> personalFolders;
+    private Map<Account, PersonalEmail> accounts;
 
     public Outlook() {
     }
 
+    public Set<Account> getAccounts() {
+        return accounts.keySet();
+    }
+
+    public PersonalEmail getPersonalEmailByName(String name) {
+        return accounts.get(getAccountByName(name));
+    }
+
+    public List<EmailFolder> getPersonalFolders(String name) {
+        return accounts.get(getAccountByName(name)).getFolders();
+    }
+
     private boolean invalidString(String data) {
+
         return data == null || data.isEmpty() || data.isBlank();
     }
 
     private boolean containsAccount(String accountName) {
+
         return getAccountByName(accountName) != null;
     }
 
-    private List<Rule> getRulesByPath(String accountName, String path) {
-        for (EmailFolder e : personalFolders.get(getAccountByName(accountName))) {
+    /*private List<Rule> getRulesByPath(String accountName, String path) {
+        for (EmailFolder e : accounts.get(getAccountByName(accountName))) {
             if (e.path().equals(path)) {
                 return e.rules();
             }
         }
         return null;
-    }
+    }*/
 
-    private Account getAccountByName(String accountName) {
-        for (Account a : personalFolders.keySet()) {
+    public Account getAccountByName(String accountName) {
+        if (accounts == null) return null;
+        for (Account a : accounts.keySet()) {
             if (a.name().equals(accountName)) {
                 return a;
             }
@@ -38,57 +55,57 @@ public class Outlook implements MailClient {
         return null;
     }
 
+    private boolean containsStringTwice(String line, String toSearch) {
 
+        int index = line.indexOf(toSearch);
+        if (index == -1) return false;
 
-    private String readMetaDataSender(String metaData) {
-        //end of string?????
-        return metaData.substring("from:".length());
+        return (line.substring(index + 1).contains(toSearch));
     }
 
-    private String readMetaDataSubject(String metaData) {
-        return metaData.substring("subject-includes:".length());
+    private boolean repeatsRule(String rule) {
+        return (containsStringTwice(rule, "subject-includes:") ||
+                containsStringTwice(rule, "subject-or-body-includes:") ||
+                containsStringTwice(rule, "recipients-includes:") ||
+                containsStringTwice(rule, "from:"));
     }
 
-    private String readMetaDataSubjectBody(String metaData) {
-        return metaData.substring("subject-or-body-includes:".length());
-    }
-
-    private String readMetaDataRecipients(String metaData) {
-        return metaData.substring("recipients-includes:".length());
-    }
-private boolean ruleAppliesSubject(Rule r, String metaData){
-        return r.ruleType()==RuleType.SUBJECT_INCLUDES &&
-                r.definition().contains(readMetaDataSubject(metaData));
-}
-    private boolean ruleAppliesSubjectBody(Rule r, String metaData,String content){
-        return r.ruleType()==RuleType.SUBJECT_OR_BODY_INCLUDES &&
-                r.definition().contains(readMetaDataSubject(metaData)
-                &&r.definition().contains(readMetaDataSubject(content));
-    }private boolean ruleAppliesSubject(Rule r, String metaData){
-        return r.ruleType()==RuleType.SUBJECT_INCLUDES &&
-                r.definition().contains(readMetaDataSubject(metaData));
-    }private boolean ruleAppliesSubject(Rule r, String metaData){
-        return r.ruleType()==RuleType.SUBJECT_INCLUDES &&
-                r.definition().contains(readMetaDataSubject(metaData));
-    }
-    private boolean ruleApplies(List<Rule> rules, String metaData, String content) {
-        int priority =MAX_PRIORITY;
-        Rule maxRule=null;
-      for(Rule r:rules){
-          if(r.ruleType()==RuleType.SUBJECT_INCLUDES &&
-                  r.definition().contains(readMetaDataSubject(metaData)) &&
-                  r.priority()<priority){
-              maxRule=r;
-              priority=r.priority();
-          }
-      }
-    }
-
-    private String getFolderByRule(String accountName, String metaData, String content) {
-        for (EmailFolder e : personalFolders.get(getAccountByName(accountName))) {
-            if (e.rules())
+    public Account getAccountByEmail(String email) {
+        for (Account a : accounts.keySet()) {
+            if (a.emailAddress().equals(email)) {
+                return a;
+            }
         }
+        return null;
     }
+
+    private Mail readMail(String metaData, String content) {
+        String[] data = metaData.split(System.lineSeparator());
+
+        Account sender = null;
+        Set<String> recipients = null;
+        String subject = null;
+        LocalDateTime received = null;
+
+        for (String line : data) {
+            if (line.contains("sender:")) {
+                sender = getAccountByEmail(line.substring(line.indexOf(":" + 1)));
+            }
+            if (line.contains("subject:")) {
+                subject = line.substring(line.indexOf(":" + 1));
+            }
+            if (line.contains("recipients:")) {
+                String[] recip = line.substring(line.indexOf(":" + 1)).split(",");
+                recipients.addAll(List.of(recip));
+            }
+            if (line.contains("received:")) {
+                DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+                received = LocalDateTime.parse(line.substring(line.indexOf(":" + 1)), dateTimeFormatter);
+            }
+        }
+        return new Mail(sender, recipients, subject, content, received);
+    }
+
 
     @Override
     public Account addNewAccount(String accountName, String email) {
@@ -100,14 +117,11 @@ private boolean ruleAppliesSubject(Rule r, String metaData){
         if (containsAccount(accountName)) {
             throw new AccountAlreadyExistsException("Tried to add an account that already exists.");
         }
-
-        Account account = new Account(accountName, email);
-
-        //accounts.add(account);
-        List<EmailFolder> folders = new LinkedList<>();
-        folders.add(new EmailFolder("inbox", null, null));
-        folders.add(new EmailFolder("sent", null, null));
-        personalFolders.put(account, folders);
+        Account account = new Account(email, accountName);
+        if (accounts == null) {
+            accounts = new HashMap<>();
+        }
+        accounts.put(account, new PersonalEmail());
 
         return account;
     }
@@ -124,20 +138,19 @@ private boolean ruleAppliesSubject(Rule r, String metaData){
         }
 
         int index = path.lastIndexOf('/');
-        String parentPath = path.substring(0, index - 1);
+        String parentPath = path.substring(0, index);
+        List<EmailFolder> currentPaths = accounts.get(getAccountByName(accountName)).getFolders();
 
-        List<EmailFolder> currentPaths = personalFolders.get(getAccountByName(accountName));
-        //if not with null mails????
 
-        if (!path.startsWith("inbox") || !currentPaths.contains(new EmailFolder(parentPath, getRulesByPath(accountName, parentPath), null))) {
+        if (!path.startsWith("/inbox") ||
+                !accounts.get(getAccountByName(accountName)).containsPath(parentPath)) {
             throw new InvalidPathException("Tried to create a folder with an invalid path.");
         }
-//if not with null mails????
-        if (currentPaths.contains(new EmailFolder(path, getRulesByPath(accountName, path), null))) {
+        if (accounts.get(getAccountByName(accountName)).containsPath(path)) {
             throw new FolderAlreadyExistsException("Tried to create a folder that already exists.");
         }
 
-        personalFolders.get(getAccountByName(accountName)).add(new EmailFolder(path, null, null));
+        accounts.get(getAccountByName(accountName)).add(path);
     }
 
 
@@ -156,28 +169,16 @@ private boolean ruleAppliesSubject(Rule r, String metaData){
             throw new AccountNotFoundException("This account doesn't exist.");
         }
 
-        List<EmailFolder> currentPaths = personalFolders.get(getAccountByName(accountName));
-        if (!currentPaths.contains(new EmailFolder(folderPath, getRulesByPath(accountName, folderPath), null))) {
-            throw new FolderNotFoundException("Tried to create a folder that already exists.");
+        if (!accounts.get(getAccountByName(accountName)).containsPath(folderPath)) {
+            throw new FolderNotFoundException("Tried to create a rule for a folder that doesn't exist.");
         }
-//personalFolders.get(getAccountByName(accountName)).
-        //????
-        //RuleAlreadyExists????
-        /*List<Rule> rulesToAdd=Rule.readRules(ruleDefinition,priority);
-        List<EmailFolder> folders=personalFolders.get(getAccountByName(accountName));
-        List<Rule>existingRules=null;
-        Map<RuleType,Integer> existing;
-        for(Rule r:existingRules){
-            existing.put(r.ruleType(),r.priority());
+        if (repeatsRule(ruleDefinition)) {
+            throw new RuleAlreadyDefinedException("Tried to add the same rule type twice.");
         }
-        for(EmailFolder f:folders){
-            existingRules.addAll(f.rules());
-        }
-        for(Rule r:rulesToAdd){
-            if(existingRules.)
-        }*/
-        getRulesByPath(accountName, folderPath).addAll(Rule.readRules(ruleDefinition,priority));
 
+        accounts.get(getAccountByName(accountName)).add(ruleDefinition, priority, folderPath);
+
+        //????????? check for this rule in inbox
     }
 
     @Override
@@ -185,22 +186,55 @@ private boolean ruleAppliesSubject(Rule r, String metaData){
         if (invalidString(accountName) || invalidString(mailMetadata) || invalidString(mailContent)) {
             throw new IllegalArgumentException("Tried to receive mail with invalid params.");
         }
-        if (getAccountByName(accountName) == null) {
+        if (!containsAccount(accountName)) {
             throw new AccountNotFoundException("Tried to receive mail for an account that doesn't exist.");
         }
-        //????
-        //FolderNotFoundException
 
-//getAccountByName(accountName).
+        Mail mail = readMail(mailMetadata, mailContent);
+        accounts.get(getAccountByName(accountName)).applyRules(mail).addMail(mail);
     }
 
     @Override
     public Collection<Mail> getMailsFromFolder(String account, String folderPath) {
-        return null;
+        if (invalidString(account) || invalidString(folderPath)) {
+            throw new IllegalArgumentException("Tried to get mail with invalid data.");
+        }
+        if (!containsAccount(account)) {
+            throw new AccountNotFoundException("tried to get mails for an account that doesn't exist.");
+        }
+        if (accounts.get(getAccountByName(account)).getFolderByName(folderPath) == null) {
+            throw new FolderNotFoundException("Tried to get mails from a folder that doesn't exist.");
+        }
+        return accounts.get(getAccountByName(account)).getFolderByName(folderPath).mails();
+
     }
 
     @Override
     public void sendMail(String accountName, String mailMetadata, String mailContent) {
+        if (invalidString(accountName) || invalidString(mailMetadata) || invalidString(mailContent)) {
+            throw new InvalidPathException("Tried to send a mail with invalid data.");
+        }
+        String line;
+        String metadata = null;
+        // int index = mailMetadata.indexOf("from:");
+        if (mailMetadata.indexOf("from:") == -1) {
+            metadata = mailMetadata +
+                    System.lineSeparator() + "from:" +
+                    getAccountByName(accountName).emailAddress();
+        } else {
+        /*    String toreplace=mailMetadata.
+            mailMetadata.replace()*/
+        }
+
+        Mail mail = readMail(mailMetadata, mailContent);
+        accounts.get(getAccountByName(accountName)).getFolderByName("/sent").addMail(mail);
+
+        Metadata data = new Metadata(mailMetadata);
+        String[] recipients = data.getRecipients();
+        for (String email : recipients) {
+            Account account = getAccountByEmail(email);
+            receiveMail(account.name(), metadata, mailContent);
+        }
 
     }
 }

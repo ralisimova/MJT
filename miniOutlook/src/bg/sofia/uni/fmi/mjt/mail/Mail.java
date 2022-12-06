@@ -4,4 +4,6 @@ import java.time.LocalDateTime;
 import java.util.Set;
 
 public record Mail(Account sender, Set<String> recipients, String subject, String body, LocalDateTime received) {
+
+
 }
