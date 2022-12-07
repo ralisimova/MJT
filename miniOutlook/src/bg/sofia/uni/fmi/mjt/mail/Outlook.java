@@ -8,7 +8,6 @@ import java.util.*;
 
 public class Outlook implements MailClient {
     private static final int MAX_PRIORITY = 10;
-    // private List<Account> accounts;
     private Map<Account, PersonalEmail> accounts;
 
     public Outlook() {
@@ -18,12 +17,8 @@ public class Outlook implements MailClient {
         return accounts.keySet();
     }
 
-    public PersonalEmail getPersonalEmailByName(String name) {
+    public PersonalEmail getPersonalFolder(String name) {
         return accounts.get(getAccountByName(name));
-    }
-
-    public List<EmailFolder> getPersonalFolders(String name) {
-        return accounts.get(getAccountByName(name)).getFolders();
     }
 
     private boolean invalidString(String data) {
@@ -36,15 +31,6 @@ public class Outlook implements MailClient {
         return getAccountByName(accountName) != null;
     }
 
-    /*private List<Rule> getRulesByPath(String accountName, String path) {
-        for (EmailFolder e : accounts.get(getAccountByName(accountName))) {
-            if (e.path().equals(path)) {
-                return e.rules();
-            }
-        }
-        return null;
-    }*/
-
     public Account getAccountByName(String accountName) {
         if (accounts == null) return null;
         for (Account a : accounts.keySet()) {
@@ -56,7 +42,6 @@ public class Outlook implements MailClient {
     }
 
     private boolean containsStringTwice(String line, String toSearch) {
-
         int index = line.indexOf(toSearch);
         if (index == -1) return false;
 
@@ -71,6 +56,8 @@ public class Outlook implements MailClient {
     }
 
     public Account getAccountByEmail(String email) {
+        if (accounts == null) return null;
+
         for (Account a : accounts.keySet()) {
             if (a.emailAddress().equals(email)) {
                 return a;
@@ -83,24 +70,29 @@ public class Outlook implements MailClient {
         String[] data = metaData.split(System.lineSeparator());
 
         Account sender = null;
-        Set<String> recipients = null;
+        Set<String> recipients = new HashSet<>();
         String subject = null;
         LocalDateTime received = null;
 
         for (String line : data) {
+            String result = line.substring(line.indexOf(":") + 1).strip();
+
             if (line.contains("sender:")) {
-                sender = getAccountByEmail(line.substring(line.indexOf(":" + 1)));
+                sender = getAccountByEmail(result);
             }
             if (line.contains("subject:")) {
-                subject = line.substring(line.indexOf(":" + 1));
+                subject = result;
             }
             if (line.contains("recipients:")) {
-                String[] recip = line.substring(line.indexOf(":" + 1)).split(",");
-                recipients.addAll(List.of(recip));
+                String[] recipient = line.substring(line.indexOf(":") + 1).split(",");
+                for (String r : recipient) {
+                    r = r.strip();
+                    recipients.add(r);
+                }
             }
             if (line.contains("received:")) {
                 DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-                received = LocalDateTime.parse(line.substring(line.indexOf(":" + 1)), dateTimeFormatter);
+                received = LocalDateTime.parse(result, dateTimeFormatter);
             }
         }
         return new Mail(sender, recipients, subject, content, received);
@@ -117,6 +109,11 @@ public class Outlook implements MailClient {
         if (containsAccount(accountName)) {
             throw new AccountAlreadyExistsException("Tried to add an account that already exists.");
         }
+
+        if (getAccountByEmail(email) != null) {
+            throw new AccountAlreadyExistsException("Tried to add an account with an email that already exists.");
+        }
+
         Account account = new Account(email, accountName);
         if (accounts == null) {
             accounts = new HashMap<>();
@@ -139,18 +136,16 @@ public class Outlook implements MailClient {
 
         int index = path.lastIndexOf('/');
         String parentPath = path.substring(0, index);
-        List<EmailFolder> currentPaths = accounts.get(getAccountByName(accountName)).getFolders();
-
 
         if (!path.startsWith("/inbox") ||
-                !accounts.get(getAccountByName(accountName)).containsPath(parentPath)) {
+                !getPersonalFolder(accountName).containsPath(parentPath)) {
             throw new InvalidPathException("Tried to create a folder with an invalid path.");
         }
-        if (accounts.get(getAccountByName(accountName)).containsPath(path)) {
+        if (getPersonalFolder(accountName).containsPath(path)) {
             throw new FolderAlreadyExistsException("Tried to create a folder that already exists.");
         }
 
-        accounts.get(getAccountByName(accountName)).add(path);
+        getPersonalFolder(accountName).add(path);
     }
 
 
@@ -169,16 +164,23 @@ public class Outlook implements MailClient {
             throw new AccountNotFoundException("This account doesn't exist.");
         }
 
-        if (!accounts.get(getAccountByName(accountName)).containsPath(folderPath)) {
+        if (!getPersonalFolder(accountName).containsPath(folderPath)) {
             throw new FolderNotFoundException("Tried to create a rule for a folder that doesn't exist.");
         }
         if (repeatsRule(ruleDefinition)) {
             throw new RuleAlreadyDefinedException("Tried to add the same rule type twice.");
         }
 
-        accounts.get(getAccountByName(accountName)).add(ruleDefinition, priority, folderPath);
+        getPersonalFolder(accountName).add(ruleDefinition, priority, folderPath);
 
-        //????????? check for this rule in inbox
+        PersonalEmail personal = getPersonalFolder(accountName);
+
+        for (Mail mail : getMailsFromFolder(accountName, "/inbox")) {
+            EmailFolder folder = personal.applyRules(mail);
+            if (folder != personal.getFolderByName("/inbox")) {
+                personal.moveMail(folder, mail);
+            }
+        }
     }
 
     @Override
@@ -191,7 +193,7 @@ public class Outlook implements MailClient {
         }
 
         Mail mail = readMail(mailMetadata, mailContent);
-        accounts.get(getAccountByName(accountName)).applyRules(mail).addMail(mail);
+        getPersonalFolder(accountName).applyRules(mail).addMail(mail);
     }
 
     @Override
@@ -202,39 +204,33 @@ public class Outlook implements MailClient {
         if (!containsAccount(account)) {
             throw new AccountNotFoundException("tried to get mails for an account that doesn't exist.");
         }
-        if (accounts.get(getAccountByName(account)).getFolderByName(folderPath) == null) {
+        if (getPersonalFolder(account).getFolderByName(folderPath) == null) {
             throw new FolderNotFoundException("Tried to get mails from a folder that doesn't exist.");
         }
-        return accounts.get(getAccountByName(account)).getFolderByName(folderPath).mails();
+        return getPersonalFolder(account).getFolderByName(folderPath).mails();
 
     }
 
     @Override
     public void sendMail(String accountName, String mailMetadata, String mailContent) {
         if (invalidString(accountName) || invalidString(mailMetadata) || invalidString(mailContent)) {
-            throw new InvalidPathException("Tried to send a mail with invalid data.");
+            throw new IllegalArgumentException("Tried to send a mail with invalid data.");
         }
-        String line;
-        String metadata = null;
-        // int index = mailMetadata.indexOf("from:");
-        if (mailMetadata.indexOf("from:") == -1) {
-            metadata = mailMetadata +
-                    System.lineSeparator() + "from:" +
-                    getAccountByName(accountName).emailAddress();
-        } else {
-        /*    String toreplace=mailMetadata.
-            mailMetadata.replace()*/
+        if (!containsAccount(accountName)) {
+            throw new AccountNotFoundException("Tried to send mails from an account that doesn't exist.");
         }
 
         Mail mail = readMail(mailMetadata, mailContent);
-        accounts.get(getAccountByName(accountName)).getFolderByName("/sent").addMail(mail);
+        mail = mail.checkSender(getAccountByName(accountName));
 
-        Metadata data = new Metadata(mailMetadata);
-        String[] recipients = data.getRecipients();
-        for (String email : recipients) {
+        getPersonalFolder(accountName).getFolderByName("/sent").addMail(mail);
+
+        for (String email : mail.recipients()) {
+            email = email.strip();
             Account account = getAccountByEmail(email);
-            receiveMail(account.name(), metadata, mailContent);
+            if (account != null) {
+                receiveMail(account.name(), mailMetadata, mailContent);
+            }
         }
-
     }
 }
