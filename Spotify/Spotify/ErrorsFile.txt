@@ -1,0 +1,6 @@
+bg.sofia.uni.fmi.mjt.spotify.exception.UsersAlreadyExists: User with this email already exists.
+bg.sofia.uni.fmi.mjt.spotify.exception.UserNotFound: Invalid email or password. Please try again.
+bg.sofia.uni.fmi.mjt.spotify.exception.UsersAlreadyExists: User with this email already exists.
+bg.sofia.uni.fmi.mjt.spotify.exception.UserNotFound: Invalid email or password. Please try again.
+bg.sofia.uni.fmi.mjt.spotify.exception.UserNotFound: Invalid email or password. Please try again.
+bg.sofia.uni.fmi.mjt.spotify.exception.PlaylistNotFound: You don't have a playlist with this name yet.
