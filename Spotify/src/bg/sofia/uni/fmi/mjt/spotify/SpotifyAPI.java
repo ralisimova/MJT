@@ -1,31 +1,27 @@
 package bg.sofia.uni.fmi.mjt.spotify;
 
-import bg.sofia.uni.fmi.mjt.spotify.exception.PlaylistAlreadyExists;
-import bg.sofia.uni.fmi.mjt.spotify.exception.PlaylistNotFound;
-import bg.sofia.uni.fmi.mjt.spotify.exception.SongNotFound;
+import bg.sofia.uni.fmi.mjt.spotify.exception.*;
 
 import java.nio.channels.SelectionKey;
 import java.util.List;
 import java.util.Set;
 
 public interface SpotifyAPI {
-  //  String parseCommand(String line);
 
-    void register(SelectionKey key,String email, String password);
+    void register(SelectionKey key, String email, String password) throws UsersAlreadyExists;
 
-    boolean login(SelectionKey key,String email, String password);
+    void login(SelectionKey key, String email, String password) throws UserNotFound;
 
-    String getSongs();
 
     Set<String> search(List<String> song);
 
     String top(int number);
 
-    void createPlaylist(SelectionKey key,String name) throws PlaylistAlreadyExists;
+    void createPlaylist(SelectionKey key, String name) throws PlaylistAlreadyExists;
 
-    void addToPlaylist(SelectionKey key,String playlist, String song) throws PlaylistNotFound;
+    void addToPlaylist(SelectionKey key, String playlist, String song) throws PlaylistNotFound;
 
-    String showPlaylist(SelectionKey key,String name) throws PlaylistNotFound;
+    String showPlaylist(SelectionKey key, String name) throws PlaylistNotFound;
 
     void streamSong(SelectionKey key, String song) throws SongNotFound;
 
